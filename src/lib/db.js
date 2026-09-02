@@ -2,14 +2,21 @@ import { createClient } from '@libsql/client';
 
 let db;
 
+// For production on Vercel, use Turso (cloud SQLite).
+// For local dev, use a file-based SQLite database.
+const DB_URL = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || 'file:football-ai.db';
+const DB_TOKEN = process.env.TURSO_AUTH_TOKEN || undefined;
+
 export function getDb() {
   if (db) return db;
 
-  const url = process.env.DATABASE_URL || 'file:football-ai.db';
+  if (process.env.NODE_ENV === 'production' && DB_URL.startsWith('file:')) {
+    throw new Error('In production you must set TURSO_DATABASE_URL. Create a free database at https://turso.tech');
+  }
 
   db = createClient({
-    url,
-    authToken: process.env.libsql_AUTH_TOKEN || undefined,
+    url: DB_URL,
+    authToken: DB_TOKEN,
   });
 
   return db;
