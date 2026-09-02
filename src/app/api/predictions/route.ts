@@ -9,25 +9,23 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const refresh = searchParams.get('refresh') === 'true';
+    let targetDate = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) targetDate = new Date().toISOString().split('T')[0];
     const db = await initDb();
 
-    // Get today's date
-    const today = new Date().toISOString().split('T')[0];
-
-    // Check if predictions already exist for today
+    // Check if predictions already exist for the target date
     let existing = await db.execute({
       sql: "SELECT * FROM predictions WHERE match_date = ? AND status = 'pending'",
-      args: [today],
+      args: [targetDate],
     });
 
     if (existing.rows.length === 0 || refresh) {
-      // Fetch matches across multiple leagues and generate predictions.
-      // Only today's matches are kept (the dashboard shows the current day only).
+      // Fetch matches across multiple leagues, keep those on the target date.
       const allMatches = await fetchUpcomingMatches(['PL', 'PD', 'BL1', 'SA', 'FL1', 'DED', 'PPL', 'CL', 'ELC'], 1);
-      const matches = allMatches.filter(m => m.date === today);
+      const matches = allMatches.filter(m => m.date === targetDate);
 
       if (matches.length === 0) {
-        return NextResponse.json({ predictions: [], message: 'No matches scheduled today' });
+        return NextResponse.json({ predictions: [], message: 'No matches scheduled on ' + targetDate });
       }
 
       // Get learning context from past lessons
@@ -53,9 +51,9 @@ export async function GET(req) {
         }];
       }
 
-      // Clear old pending predictions for today
+      // Clear old pending predictions for the target date
       if (existing.rows.length > 0) {
-        await db.execute("DELETE FROM predictions WHERE match_date = ? AND status = 'pending'", [today]);
+        await db.execute("DELETE FROM predictions WHERE match_date = ? AND status = 'pending'", [targetDate]);
       }
 
       // Save new predictions
@@ -65,7 +63,7 @@ export async function GET(req) {
           homeTeam: match.homeTeam,
           awayTeam: match.awayTeam,
           competition: 'Unknown',
-          date: today,
+          date: targetDate,
         };
 
         for (const pred of match.predictions) {
@@ -87,7 +85,7 @@ export async function GET(req) {
       }
     }
 
-    // Fetch today's predictions only
+    // Fetch predictions for the target date only
     const predictions = await db.execute({
       sql: `SELECT p.*, 
             CASE WHEN m.result IS NOT NULL THEN m.result ELSE NULL END as actual_result,
@@ -97,7 +95,7 @@ export async function GET(req) {
             LEFT JOIN match_results m ON p.match_id = m.match_id
             WHERE p.match_date = ?
             ORDER BY p.confidence DESC, p.created_at DESC`,
-      args: [today],
+      args: [targetDate],
     });
 
     return NextResponse.json({ predictions: predictions.rows, fromAI: true });

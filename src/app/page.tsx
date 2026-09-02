@@ -7,8 +7,11 @@ const ROLLOVER_CACHE_KEY = 'football_ai_rollover';
 
 export default function Home() {
   const [predictions, setPredictions] = useState([]);
+  const [nextDay, setNextDay] = useState([]);
+  const [nextDayTitle, setNextDayTitle] = useState(null);
   const [rollover, setRollover] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingNext, setLoadingNext] = useState(false);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -62,6 +65,33 @@ export default function Home() {
     setRefreshing(false);
   };
 
+  const handleShowNextDay = async () => {
+    setLoadingNext(true);
+    setError(null);
+    const tomorrow = new Date(Date.now() + 86400000);
+    const fmt = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const date = fmt(tomorrow);
+    const label = tomorrow.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    try {
+      const res = await fetch(`/api/predictions?date=${date}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const sorted = [...(data.predictions || [])].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+      setNextDay(sorted);
+      setNextDayTitle(label);
+      if (sorted.length === 0) setError(data.message || `No matches scheduled for ${label}`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoadingNext(false);
+    }
+  };
+
   const pendingCount = predictions.filter(p => p.status === 'pending').length;
 
   return (
@@ -86,6 +116,13 @@ export default function Home() {
           <a href="/learn" className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm">
             🧠 Learning
           </a>
+          <button
+            onClick={handleShowNextDay}
+            disabled={loadingNext}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 transition text-sm"
+          >
+            {loadingNext ? 'Analyzing...' : '➡️ Next Day Matches'}
+          </button>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -136,6 +173,51 @@ export default function Home() {
         ) : (
           <div className="space-y-4">
             {predictions.slice(0, 20).map((pred, i) => (
+              <PredictionCard key={i} pred={pred} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mb-10">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-semibold text-white">➡️ Next Day Predictions</h2>
+          {nextDayTitle && (
+            <span className="text-sm text-purple-300">{nextDayTitle}</span>
+          )}
+        </div>
+
+        {nextDay.length === 0 ? (
+          !nextDayTitle ? (
+            <div className="bg-slate-800 rounded-xl p-8 text-center border border-dashed border-slate-600">
+              <p className="text-slate-400 mb-4">
+                Analyze the matches scheduled for tomorrow.
+              </p>
+              <button
+                onClick={handleShowNextDay}
+                disabled={loadingNext}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium disabled:opacity-50"
+              >
+                {loadingNext ? '🔍 Analyzing next day matches...' : '🔍 Analyze Next Day Matches'}
+              </button>
+            </div>
+          ) : (
+            <div className="bg-slate-800 rounded-xl p-8 text-center">
+              <p className="text-slate-400 mb-4">
+                No matches scheduled for {nextDayTitle}.
+              </p>
+              <button
+                onClick={handleShowNextDay}
+                disabled={loadingNext}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium disabled:opacity-50"
+              >
+                {loadingNext ? '🔍 Analyzing...' : '🔍 Retry Analysis'}
+              </button>
+            </div>
+          )
+        ) : (
+          <div className="space-y-4">
+            {nextDay.map((pred, i) => (
               <PredictionCard key={i} pred={pred} />
             ))}
           </div>
