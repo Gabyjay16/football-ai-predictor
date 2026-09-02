@@ -27,6 +27,11 @@ const LEAGUE_NAMES = {
   ELC: 'Championship',
 };
 
+/**
+ * Fetch upcoming fixtures. `league` is a single competition code or an array of codes.
+ * @param {string|string[]} league
+ * @param {number} [days]
+ */
 export async function fetchUpcomingMatches(league = 'PL', days = 1) {
   const apiKey = process.env.FOOTBALL_API_KEY;
 
@@ -40,13 +45,26 @@ export async function fetchUpcomingMatches(league = 'PL', days = 1) {
       const dateFrom = now.toISOString().split('T')[0];
       const dateTo = end.toISOString().split('T')[0];
 
-      const url = `${FD_BASE}/competitions/${league}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
-      const res = await fetch(url, {
-        headers: { 'X-Auth-Token': apiKey },
-        next: { revalidate: 900 }, // cache 15 min
-      });
+      // league may be a single code or an array of codes
+      const codes = Array.isArray(league) ? league : [league];
 
-      if (res.ok) {
+      // Fetch matches across leagues, but respect free-tier limits (10 req/min).
+      // Only make one request per league, capped at a small number of leagues.
+      const allMatches = [];
+      const limitedCodes = codes.slice(0, 4);
+
+      for (const code of limitedCodes) {
+        const url = `${FD_BASE}/competitions/${code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
+        const res = await fetch(url, {
+          headers: { 'X-Auth-Token': apiKey },
+          cache: 'no-store',
+        });
+
+        if (!res.ok) {
+          console.warn('football-data.org', code, 'returned', res.status);
+          continue;
+        }
+
         const data = await res.json();
         const matches = (data.matches || [])
           .filter(m => m.status === 'SCHEDULED' || m.status === 'TIMED')
@@ -54,7 +72,7 @@ export async function fetchUpcomingMatches(league = 'PL', days = 1) {
             const id = String(m.id);
             return {
               id,
-              competition: m.competition?.name || LEAGUE_NAMES[league] || league,
+              competition: m.competition?.name || LEAGUE_NAMES[code] || code,
               homeTeam: m.homeTeam?.name || `Home ${id}`,
               awayTeam: m.awayTeam?.name || `Away ${id}`,
               date: (m.utcDate || '').split('T')[0] || dateFrom,
@@ -63,12 +81,22 @@ export async function fetchUpcomingMatches(league = 'PL', days = 1) {
               homeId: m.homeTeam?.id,
               awayId: m.awayTeam?.id,
             };
-          })
-          .slice(0, 15); // cap to stay within free tier reasonableness
-        return matches; // return real matches even if empty (don't fall back to samples)
-      } else {
-        console.warn('football-data.org returned', res.status, '- falling back to sample data');
+          });
+        allMatches.push(...matches);
       }
+
+      if (allMatches.length > 0) {
+        // Dedupe by id, then cap. Return real matches even if fewer than expected.
+        const seen = new Set();
+        const unique = allMatches.filter(m => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        }).slice(0, 20);
+        return unique;
+      }
+      // no real matches across the requested leagues, do not fall back to samples
+      return [];
     } catch (e) {
       console.error('football-data.org fixtures fetch failed, using sample data:', e.message);
     }

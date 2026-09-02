@@ -21,11 +21,13 @@ export async function GET(req) {
     });
 
     if (existing.rows.length === 0 || refresh) {
-      // Fetch matches and generate predictions
-      const matches = await fetchUpcomingMatches('PL', 1);
+      // Fetch matches across multiple leagues and generate predictions.
+      // Only today's matches are kept (the dashboard shows the current day only).
+      const allMatches = await fetchUpcomingMatches(['PL', 'PD', 'BL1', 'SA', 'FL1', 'DED', 'PPL', 'CL', 'ELC'], 1);
+      const matches = allMatches.filter(m => m.date === today);
 
       if (matches.length === 0) {
-        return NextResponse.json({ predictions: [], message: 'No matches scheduled' });
+        return NextResponse.json({ predictions: [], message: 'No matches scheduled today' });
       }
 
       // Get learning context from past lessons
