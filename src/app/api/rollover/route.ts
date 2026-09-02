@@ -84,7 +84,7 @@ export async function GET(req) {
       await db.execute({ sql: "DELETE FROM rollovers WHERE roll_date = ?", args: [today] });
     } else {
       const combinedProb = selected.reduce((acc, p) => acc * p.confidence, 1);
-      const serialized = JSON.stringify(selected.map(p => ({
+      const serialize = (p) => ({
         predictionId: p.id,
         matchId: p.match_id,
         homeTeam: p.home_team,
@@ -92,7 +92,9 @@ export async function GET(req) {
         market: p.market,
         expected: p.prediction,
         confidence: p.confidence,
-      })));
+        kickoff: p.kickoff || null,
+      });
+      const serialized = JSON.stringify(selected.map(serialize));
 
       await db.execute({
         sql: `INSERT INTO rollovers (roll_date, selections, combined_odds, combined_probability, status)
@@ -110,15 +112,7 @@ export async function GET(req) {
         combined_odds: combinedOdds,
         combined_probability: combinedProb,
         status: 'pending',
-        selections: selected.map(p => ({
-          predictionId: p.id,
-          matchId: p.match_id,
-          homeTeam: p.home_team,
-          awayTeam: p.away_team,
-          market: p.market,
-          expected: p.prediction,
-          confidence: p.confidence,
-        })),
+        selections: selected.map(serialize),
       };
     }
 

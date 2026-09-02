@@ -64,12 +64,13 @@ export async function GET(req) {
           awayTeam: match.awayTeam,
           competition: 'Unknown',
           date: targetDate,
+          utcDate: null,
         };
 
         for (const pred of match.predictions) {
           await db.execute({
-            sql: `INSERT INTO predictions (match_id, competition, home_team, away_team, match_date, prediction, market, confidence, status)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+            sql: `INSERT INTO predictions (match_id, competition, home_team, away_team, match_date, prediction, market, confidence, kickoff, status)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
             args: [
               matchInfo.id,
               matchInfo.competition,
@@ -79,6 +80,7 @@ export async function GET(req) {
               pred.expected || pred.market,
               pred.market,
               pred.confidence,
+              matchInfo.utcDate || null,
             ],
           });
         }

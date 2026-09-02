@@ -240,6 +240,18 @@ export default function Home() {
   );
 }
 
+function camTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Douala',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
 function StatCard({ label, value, icon }) {
   return (
     <div className="bg-slate-800 rounded-xl p-5 flex items-center gap-4">
@@ -260,11 +272,17 @@ function PredictionCard({ pred }) {
   }[pred.status] || 'bg-slate-500/20 text-slate-300 border-slate-500/50';
 
   const confidence = Math.round((pred.confidence || 0) * 100);
+  const kickoff = camTime(pred.kickoff);
 
   return (
     <div className="bg-slate-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-4 hover:bg-slate-700/50 transition">
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-1">
+          {kickoff && (
+            <span className="text-xs bg-slate-900 px-2 py-0.5 rounded text-purple-300 border border-slate-600" title="Kickoff (Cameroon time)">
+              🕐 {kickoff}
+            </span>
+          )}
           {pred.actual_home != null && (
             <span className="text-xs bg-slate-900 px-2 py-0.5 rounded text-slate-200 border border-slate-600">
               FT {pred.actual_home} - {pred.actual_away}
@@ -333,6 +351,9 @@ function RolloverPanel({ rollover }) {
                 <div>
                   <div className="text-sm text-white font-medium">
                     {i + 1}. {s.homeTeam} vs {s.awayTeam}
+                    {s.kickoff && (
+                      <span className="text-xs text-purple-300 ml-2">🕐 {camTime(s.kickoff)}</span>
+                    )}
                   </div>
                   <div className="text-xs text-slate-400">{s.expected || s.market}</div>
                 </div>

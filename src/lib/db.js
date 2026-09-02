@@ -49,6 +49,10 @@ export async function initDb() {
     if (!hasConfidence) {
       await client.execute(`ALTER TABLE predictions ADD COLUMN confidence REAL`);
     }
+    const hasKickoff = cols.rows.some(r => r.name === 'kickoff');
+    if (!hasKickoff) {
+      await client.execute(`ALTER TABLE predictions ADD COLUMN kickoff TEXT`);
+    }
   } catch (e) {
     console.error('Migration check failed:', e.message);
   }

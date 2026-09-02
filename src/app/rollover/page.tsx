@@ -93,6 +93,9 @@ export default function RolloverPage() {
                     <div key={j} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-3 py-2">
                       <div className="text-sm text-slate-300">
                         {s.homeTeam} vs {s.awayTeam}
+                        {s.kickoff && (
+                          <span className="text-purple-300 ml-2">🕐 {camTime(s.kickoff)}</span>
+                        )}
                         <span className="text-slate-500 ml-2">— {s.expected || s.market}</span>
                       </div>
                       <div className="flex items-center gap-3">
@@ -133,4 +136,16 @@ function Stat({ label, value, color = "text-white" }) {
       <div className="text-xs text-slate-400">{label}</div>
     </div>
   );
+}
+
+function camTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Douala',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
 }
