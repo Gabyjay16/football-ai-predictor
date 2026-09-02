@@ -1,0 +1,5 @@
+{
+  "env": {
+    "OPENROUTER_API_KEY": "@openrouter_api_key"
+  }
+}
