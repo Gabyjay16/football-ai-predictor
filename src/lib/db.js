@@ -80,5 +80,34 @@ export async function initDb() {
     )
   `);
 
+  // Daily 2.0 odds rollover accumulator
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS rollovers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      roll_date TEXT UNIQUE,
+      selections TEXT,
+      combined_odds REAL,
+      combined_probability REAL,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS rollover_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      roll_date TEXT,
+      selection_index INTEGER,
+      match_id TEXT,
+      home_team TEXT,
+      away_team TEXT,
+      market TEXT,
+      expected TEXT,
+      confidence REAL,
+      won INTEGER,
+      settled_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   return client;
 }

@@ -27,3 +27,5 @@ yarn-error.log*
 # database
 *.db
 *.db-journal
+.vercel
+.env*

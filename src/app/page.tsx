@@ -1,29 +1,68 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+
+const CACHE_KEY = 'football_ai_predictions';
+const ROLLOVER_CACHE_KEY = 'football_ai_rollover';
 
 export default function Home() {
   const [predictions, setPredictions] = useState([]);
+  const [rollover, setRollover] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const loadPredictions = async () => {
-    setLoading(true);
+  // Instant render from cache, then background refresh
+  useEffect(() => {
     try {
-      const res = await fetch('/api/predictions');
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) setPredictions(JSON.parse(cached));
+      const cachedRoll = localStorage.getItem(ROLLOVER_CACHE_KEY);
+      if (cachedRoll) setRollover(JSON.parse(cachedRoll));
+    } catch (e) {
+      console.error('Cache read error', e);
+    }
+    loadPredictions();
+    loadRollover();
+  }, []);
+
+  const loadPredictions = useCallback(async (force = false) => {
+    try {
+      setLoading(true);
+      const url = force ? '/api/predictions?refresh=true' : '/api/predictions';
+      const res = await fetch(url);
       const data = await res.json();
-      if (data.error) setError(data.error);
-      else setPredictions(data.predictions || []);
+      if (data.error) throw new Error(data.error);
+      const sorted = [...(data.predictions || [])].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+      setPredictions(sorted);
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(sorted)); } catch (e) {}
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const loadRollover = useCallback(async () => {
+    try {
+      const res = await fetch('/api/rollover');
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setRollover(data);
+      try { localStorage.setItem(ROLLOVER_CACHE_KEY, JSON.stringify(data)); } catch (e) {}
+    } catch (e) {
+      console.error('Rollover load error', e);
+    }
+  }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadPredictions(true);
+    await loadRollover();
+    setRefreshing(false);
   };
 
-  useEffect(() => {
-    loadPredictions();
-  }, []);
+  const pendingCount = predictions.filter(p => p.status === 'pending').length;
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8">
@@ -35,6 +74,9 @@ export default function Home() {
           <p className="text-slate-400 mt-1">AI-powered betting analysis with self-learning</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <a href="/rollover" className="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm">
+            🎲 Rollover 2.0
+          </a>
           <a href="/track" className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm">
             🎯 Track Results
           </a>
@@ -45,11 +87,11 @@ export default function Home() {
             🧠 Learning
           </a>
           <button
-            onClick={loadPredictions}
-            disabled={loading}
+            onClick={handleRefresh}
+            disabled={refreshing}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 transition text-sm"
           >
-            {loading ? 'Loading...' : '🔄 Refresh'}
+            {refreshing ? 'Refreshing...' : '🔄 Refresh'}
           </button>
         </div>
       </header>
@@ -60,10 +102,11 @@ export default function Home() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard label="Total Predictions" value={predictions.length} icon="📊" />
-        <StatCard label="Pending" value={predictions.filter(p => p.status === 'pending').length} icon="⏳" />
-        <StatCard label="To Track Today" value={predictions.filter(p => p.status !== 'won' && p.status !== 'lost').length} icon="🎯" />
+        <StatCard label="Pending" value={pendingCount} icon="⏳" />
+        <StatCard label="Won" value={predictions.filter(p => p.status === 'won').length} icon="✅" />
+        <StatCard label="Lost" value={predictions.filter(p => p.status === 'lost').length} icon="❌" />
       </div>
 
       <section className="mb-10">
@@ -74,7 +117,7 @@ export default function Home() {
           </a>
         </div>
 
-        {loading ? (
+        {loading && predictions.length === 0 ? (
           <div className="animate-pulse space-y-4">
             {[1, 2, 3].map(i => (
               <div key={i} className="bg-slate-800 rounded-xl p-4 h-24"></div>
@@ -82,13 +125,9 @@ export default function Home() {
           </div>
         ) : predictions.length === 0 ? (
           <div className="bg-slate-800 rounded-xl p-8 text-center">
-            <p className="text-slate-400 mb-4">No predictions yet for today.</p>
+            <p className="text-slate-400 mb-4">No predictions yet.</p>
             <button
-              onClick={async () => {
-                setLoading(true);
-                await fetch('/api/predictions?refresh=true');
-                await loadPredictions();
-              }}
+              onClick={handleRefresh}
               className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium"
             >
               🤖 Generate AI Predictions
@@ -96,21 +135,23 @@ export default function Home() {
           </div>
         ) : (
           <div className="space-y-4">
-            {predictions.slice(0, 15).map((pred, i) => (
-              <PredictionCard key={i} pred={pred} index={i} />
+            {predictions.slice(0, 20).map((pred, i) => (
+              <PredictionCard key={i} pred={pred} />
             ))}
           </div>
         )}
       </section>
 
-      <section className="bg-gradient-to-r from-green-900/40 to-blue-900/40 rounded-xl p-5 border border-green-800/30">
+      <RolloverPanel rollover={rollover} />
+
+      <section className="bg-gradient-to-r from-green-900/40 to-blue-900/40 rounded-xl p-5 border border-green-800/30 mt-8">
         <h3 className="font-semibold text-green-300 mb-2">💡 How it works</h3>
         <ol className="list-decimal list-inside text-sm text-slate-300 space-y-1">
           <li>AI analyzes today&apos;s matches using team form, head-to-head, and historical patterns</li>
           <li>Generates 3-4 predictions per match with confidence scores</li>
           <li>After each match, results are recorded as Won or Lost</li>
           <li>AI learns from losing predictions and adjusts future analysis</li>
-          <li>The model improves daily as it accumulates match results</li>
+          <li>Daily Rollover 2.0 combines the safest picks to target ~2.0 odds</li>
         </ol>
       </section>
     </main>
@@ -129,19 +170,24 @@ function StatCard({ label, value, icon }) {
   );
 }
 
-function PredictionCard({ pred, index }) {
+function PredictionCard({ pred }) {
   const statusColor = {
     'won': 'bg-green-500/20 text-green-300 border-green-500/50',
     'lost': 'bg-red-500/20 text-red-300 border-red-500/50',
     'pending': 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50',
   }[pred.status] || 'bg-slate-500/20 text-slate-300 border-slate-500/50';
 
-  const confidence = Math.round(pred.confidence * 100);
+  const confidence = Math.round((pred.confidence || 0) * 100);
 
   return (
     <div className="bg-slate-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-4 hover:bg-slate-700/50 transition">
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-1">
+          {pred.actual_home != null && (
+            <span className="text-xs bg-slate-900 px-2 py-0.5 rounded text-slate-200 border border-slate-600">
+              FT {pred.actual_home} - {pred.actual_away}
+            </span>
+          )}
           <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">
             {pred.competition}
           </span>
@@ -163,5 +209,107 @@ function PredictionCard({ pred, index }) {
         {confidence >= 85 && <span className="text-xl">🔥</span>}
       </div>
     </div>
+  );
+}
+
+function RolloverPanel({ rollover }) {
+  const today = rollover?.today;
+
+  return (
+    <section className="mb-10">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-semibold text-white">🎲 Daily Rollover 2.0</h2>
+        <a href="/rollover" className="text-green-400 hover:text-green-300 text-sm">
+          View Full History →
+        </a>
+      </div>
+
+      {!today || !today.selections || today.selections.length === 0 ? (
+        <div className="bg-slate-800 rounded-xl p-6 text-center">
+          <p className="text-slate-400">
+            No rollover available yet. Predictions need to be generated first.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-gradient-to-br from-green-900/40 to-slate-900 rounded-xl p-5 border border-green-800/40">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h3 className="font-semibold text-white">Today&apos;s Accumulator</h3>
+              <p className="text-xs text-slate-400">{today.roll_date}</p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-green-400">
+                {today.combined_odds ? today.combined_odds.toFixed(2) : '—'}
+              </div>
+              <div className="text-xs text-slate-400">Combined Odds</div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {(today.selections || []).map((s, i) => (
+              <div key={i} className="bg-slate-800/70 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-white font-medium">
+                    {i + 1}. {s.homeTeam} vs {s.awayTeam}
+                  </div>
+                  <div className="text-xs text-slate-400">{s.expected || s.market}</div>
+                </div>
+                <div className="text-sm font-semibold text-blue-400">
+                  {Math.round((s.confidence || 0) * 100)}%
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between bg-slate-900/60 rounded-lg p-3">
+            <span className="text-sm text-slate-300">Estimated combined probability</span>
+            <span className="text-lg font-bold text-green-400">
+              {today.combined_probability ? (today.combined_probability * 100).toFixed(1) : '—'}%
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Recent rollover history (compact) */}
+      {(rollover?.history || []).length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold text-slate-300 mb-2">Recent Rollovers</h3>
+          <div className="overflow-hidden rounded-xl border border-slate-700">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-800 text-slate-400">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Date</th>
+                  <th className="px-3 py-2 text-center font-medium">Odds</th>
+                  <th className="px-3 py-2 text-center font-medium">Picks</th>
+                  <th className="px-3 py-2 text-right font-medium">Result</th>
+                </tr>
+              </thead>
+              <tbody className="bg-slate-900/50">
+                {rollover.history.slice(0, 5).map((h, i) => {
+                  const settled = h.selections?.every(s => s.won != null);
+                  const won = settled && h.selections?.every(s => s.won === 1);
+                  return (
+                    <tr key={i} className="border-t border-slate-800">
+                      <td className="px-3 py-2 text-slate-300">{h.roll_date}</td>
+                      <td className="px-3 py-2 text-center text-slate-300">{h.combined_odds?.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-center text-slate-300">{h.selections?.length}</td>
+                      <td className="px-3 py-2 text-right">
+                        {!settled ? (
+                          <span className="text-yellow-400">Pending</span>
+                        ) : won ? (
+                          <span className="text-green-400 font-semibold">✅ Won</span>
+                        ) : (
+                          <span className="text-red-400 font-semibold">❌ Lost</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

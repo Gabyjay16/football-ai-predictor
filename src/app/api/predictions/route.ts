@@ -93,7 +93,7 @@ export async function GET(req) {
             CASE WHEN m.away_score IS NOT NULL THEN m.away_score ELSE NULL END as actual_away
             FROM predictions p 
             LEFT JOIN match_results m ON p.match_id = m.match_id
-            ORDER BY p.created_at DESC`,
+            ORDER BY p.confidence DESC, p.created_at DESC`,
     });
 
     return NextResponse.json({ predictions: predictions.rows, fromAI: true });
