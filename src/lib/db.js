@@ -31,11 +31,27 @@ export async function initDb() {
       match_date TEXT,
       prediction TEXT,
       markets TEXT,
+      market TEXT,
       confidence REAL,
       status TEXT DEFAULT 'pending',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: ensure market column exists if table was created without it
+  try {
+    const cols = await client.execute(`PRAGMA table_info(predictions)`);
+    const hasMarket = cols.rows.some(r => r.name === 'market');
+    if (!hasMarket) {
+      await client.execute(`ALTER TABLE predictions ADD COLUMN market TEXT`);
+    }
+    const hasConfidence = cols.rows.some(r => r.name === 'confidence');
+    if (!hasConfidence) {
+      await client.execute(`ALTER TABLE predictions ADD COLUMN confidence REAL`);
+    }
+  } catch (e) {
+    console.error('Migration check failed:', e.message);
+  }
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS match_results (
