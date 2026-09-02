@@ -1,5 +1,5 @@
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'google/gemini-flash-3.7';
+const MODEL = 'google/gemini-3.7-flash';
 
 export async function analyzeMatches(matches, learningContext = '') {
   const key = process.env.OPENROUTER_API_KEY;
