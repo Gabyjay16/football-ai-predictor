@@ -1,8 +1,31 @@
-import { getDb } from './db';
+// football-data.org (real current-season fixtures & scores)
+// Free tier: 10 requests/min. Requires FOOTBALL_API_KEY.
+const FD_BASE = 'https://api.football-data.org/v4';
 
-// football-data.org API for real fixtures (optional - requires free API key)
-// If FOOTBALL_API_KEY is not set, returns sample fixtures so the app is functional.
-const FOOTBALL_ORG = 'https://api.football-data.org/v4';
+// football-data.org competition codes
+const LEAGUE_CODES = {
+  PL: 'PL', // English Premier League
+  PD: 'PD', // La Liga (Spain)
+  BL1: 'BL1', // Bundesliga (Germany)
+  SA: 'SA', // Serie A (Italy)
+  FL1: 'FL1', // Ligue 1 (France)
+  DED: 'DED', // Eredivisie (Netherlands)
+  PPL: 'PPL', // Primeira Liga (Portugal)
+  CL: 'CL', // Champions League
+  ELC: 'ELC', // Championship (England)
+};
+
+const LEAGUE_NAMES = {
+  PL: 'Premier League',
+  PD: 'La Liga',
+  BL1: 'Bundesliga',
+  SA: 'Serie A',
+  FL1: 'Ligue 1',
+  DED: 'Eredivisie',
+  PPL: 'Primeira Liga',
+  CL: 'Champions League',
+  ELC: 'Championship',
+};
 
 export async function fetchUpcomingMatches(league = 'PL', days = 1) {
   const apiKey = process.env.FOOTBALL_API_KEY;
@@ -10,35 +33,40 @@ export async function fetchUpcomingMatches(league = 'PL', days = 1) {
   // Real data if a football-data.org key is configured
   if (apiKey) {
     try {
-      const today = new Date();
-      const end = new Date(today);
+      const now = new Date();
+      const end = new Date(now);
       end.setDate(end.getDate() + days);
-      const dateFrom = today.toISOString().split('T')[0];
+      const dateFrom = now.toISOString().split('T')[0];
       const dateTo = end.toISOString().split('T')[0];
 
-      const url = `${FOOTBALL_ORG}/competitions/${league}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
+      const url = `${FD_BASE}/competitions/${league}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
       const res = await fetch(url, {
         headers: { 'X-Auth-Token': apiKey },
+        next: { revalidate: 900 }, // cache 15 min
       });
 
       if (res.ok) {
         const data = await res.json();
         const matches = (data.matches || [])
-          .filter(m => m.status === 'SCHEDULED' || m.status === 'TIMED')
-          .map(m => ({
-            id: String(m.id),
-            competition: m.competition?.name || league,
-            homeTeam: m.homeTeam?.name || `Home ${m.id}`,
-            awayTeam: m.awayTeam?.name || `Away ${m.id}`,
-            date: m.utcDate?.split('T')[0] || dateFrom,
-            status: m.status,
-            homeId: m.homeTeam?.id,
-            awayId: m.awayTeam?.id,
-          }));
-        return matches;
+          .filter(m => m.status === 'SCHEDULED' || m.status === 'TIMED' || m.status === 'SCHEDULED')
+          .map(m => {
+            const id = String(m.id);
+            return {
+              id,
+              competition: m.competition?.name || LEAGUE_NAMES[league] || league,
+              homeTeam: m.homeTeam?.name || `Home ${id}`,
+              awayTeam: m.awayTeam?.name || `Away ${id}`,
+              date: (m.utcDate || '').split('T')[0] || dateFrom,
+              status: m.status,
+              utcDate: m.utcDate,
+              homeId: m.homeTeam?.id,
+              awayId: m.awayTeam?.id,
+            };
+          });
+        if (matches.length > 0) return matches;
       }
     } catch (e) {
-      console.error('football-data.org fetch failed, using sample data:', e.message);
+      console.error('football-data.org fixtures fetch failed, using sample data:', e.message);
     }
   }
 
@@ -98,28 +126,35 @@ export async function fetchPastMatches(days = 7) {
 
   if (apiKey) {
     try {
-      const today = new Date();
-      const start = new Date(today);
+      const now = new Date();
+      const start = new Date(now);
       start.setDate(start.getDate() - days);
       const dateFrom = start.toISOString().split('T')[0];
 
-      const url = `${FOOTBALL_ORG}/matches?dateFrom=${dateFrom}&status=FINISHED`;
+      const url = `${FD_BASE}/matches?dateFrom=${dateFrom}&status=FINISHED`;
       const res = await fetch(url, {
         headers: { 'X-Auth-Token': apiKey },
+        next: { revalidate: 900 },
       });
 
       if (res.ok) {
         const data = await res.json();
-        return (data.matches || []).map(m => ({
-          id: String(m.id),
-          homeTeam: m.homeTeam?.name,
-          awayTeam: m.awayTeam?.name,
-          homeScore: m.score?.fullTime?.home,
-          awayScore: m.score?.fullTime?.away,
-          result: m.score?.fullTime?.home > m.score?.fullTime?.away ? 'H' :
-                  m.score?.fullTime?.home < m.score?.fullTime?.away ? 'A' : 'D',
-          date: m.utcDate?.split('T')[0],
-        }));
+        const matches = (data.matches || [])
+          .filter(m => m.status === 'FINISHED' && m.score?.fullTime?.home != null)
+          .map(m => {
+            const home = m.score.fullTime.home;
+            const away = m.score.fullTime.away;
+            return {
+              id: String(m.id),
+              homeTeam: m.homeTeam?.name,
+              awayTeam: m.awayTeam?.name,
+              homeScore: home,
+              awayScore: away,
+              result: home > away ? 'H' : home < away ? 'A' : 'D',
+              date: (m.utcDate || '').split('T')[0],
+            };
+          });
+        if (matches.length > 0) return matches;
       }
     } catch (e) {
       console.error('football-data.org history fetch failed:', e.message);
