@@ -30,12 +30,13 @@ const LEAGUE_NAMES = {
 export async function fetchUpcomingMatches(league = 'PL', days = 1) {
   const apiKey = process.env.FOOTBALL_API_KEY;
 
-  // Real data if a football-data.org key is configured
+  // Real data if a football-data.org key is configured.
+  // Widen the window so upcoming real fixtures are found even if today has none.
   if (apiKey) {
     try {
       const now = new Date();
       const end = new Date(now);
-      end.setDate(end.getDate() + days);
+      end.setDate(end.getDate() + 4); // look ahead up to 4 days
       const dateFrom = now.toISOString().split('T')[0];
       const dateTo = end.toISOString().split('T')[0];
 
@@ -48,7 +49,7 @@ export async function fetchUpcomingMatches(league = 'PL', days = 1) {
       if (res.ok) {
         const data = await res.json();
         const matches = (data.matches || [])
-          .filter(m => m.status === 'SCHEDULED' || m.status === 'TIMED' || m.status === 'SCHEDULED')
+          .filter(m => m.status === 'SCHEDULED' || m.status === 'TIMED')
           .map(m => {
             const id = String(m.id);
             return {
@@ -62,8 +63,11 @@ export async function fetchUpcomingMatches(league = 'PL', days = 1) {
               homeId: m.homeTeam?.id,
               awayId: m.awayTeam?.id,
             };
-          });
-        if (matches.length > 0) return matches;
+          })
+          .slice(0, 15); // cap to stay within free tier reasonableness
+        return matches; // return real matches even if empty (don't fall back to samples)
+      } else {
+        console.warn('football-data.org returned', res.status, '- falling back to sample data');
       }
     } catch (e) {
       console.error('football-data.org fixtures fetch failed, using sample data:', e.message);
