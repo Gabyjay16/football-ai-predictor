@@ -78,7 +78,7 @@ export default function Home() {
     const date = fmt(tomorrow);
     const label = tomorrow.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
     try {
-      const res = await fetch(`/api/predictions?date=${date}`);
+      const res = await fetch(`/api/predictions?date=${date}&refresh=true`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       const sorted = [...(data.predictions || [])].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
