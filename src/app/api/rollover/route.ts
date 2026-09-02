@@ -57,37 +57,60 @@ export async function GET(req) {
         SELECT * FROM predictions
         WHERE status = 'pending'
         ORDER BY confidence DESC
-        LIMIT 10
+        LIMIT 40
       `);
 
-      const picks = preds.rows.filter(p => p.confidence >= 0.75);
+      // Keep only one (highest-confidence) pick per distinct match
+      const byMatch = new Map();
+      for (const p of preds.rows) {
+        const key = p.match_id;
+        if (!byMatch.has(key)) byMatch.set(key, p);
+      }
+      const candidates = [...byMatch.values()].filter(p => p.confidence >= 0.80);
 
-      if (picks.length > 0) {
-        // Greedily select safest picks until combined odds >= ~2.0
-        const selected = [];
-        let combinedOdds = 1;
-        for (const p of picks) {
-          const odds = probToOdds(p.confidence);
-          if (combinedOdds * odds >= TARGET_ODDS || selected.length === 0) {
-            // Only stop adding once we reach target with at least 2 picks
-            if (combinedOdds * odds >= TARGET_ODDS && selected.length >= 1) {
-              if (selected.length + 1 >= 2) {
-                selected.push(p);
-                combinedOdds *= odds;
-                break;
-              }
-            }
-            if (selected.length < 2 || combinedOdds * odds < TARGET_ODDS * 1.5) {
-              selected.push(p);
-              combinedOdds *= odds;
-            }
-            if (combinedOdds >= TARGET_ODDS && selected.length >= 2) break;
-          }
+      // Greedily add safest picks until we reach ~2.0 combined odds or hit the cap.
+      // High-confidence picks have low individual odds (1/conf), so we need enough of them.
+      const MAX_PICKS = 8;
+      const selected = [];
+      let combinedOdds = 1;
+      for (const p of candidates) {
+        const odds = probToOdds(p.confidence);
+        // Always take a couple of anchors, then stop slightly above target before it grows too big.
+        if (selected.length === 0) {
+          selected.push(p);
+          combinedOdds *= odds;
+          continue;
         }
+        if (combinedOdds * odds > TARGET_ODDS * 1.25) break;
+        if (selected.length >= MAX_PICKS) break;
+        selected.push(p);
+        combinedOdds *= odds;
+      }
 
-        if (selected.length >= 2) {
-          const combinedProb = selected.reduce((acc, p) => acc * p.confidence, 1);
-          const serialized = JSON.stringify(selected.map(p => ({
+      if (selected.length >= 2) {
+        const combinedProb = selected.reduce((acc, p) => acc * p.confidence, 1);
+        const serialized = JSON.stringify(selected.map(p => ({
+          predictionId: p.id,
+          matchId: p.match_id,
+          homeTeam: p.home_team,
+          awayTeam: p.away_team,
+          market: p.market,
+          expected: p.prediction,
+          confidence: p.confidence,
+        })));
+
+        await db.execute({
+          sql: `INSERT INTO rollovers (roll_date, selections, combined_odds, combined_probability, status)
+                VALUES (?, ?, ?, ?, 'pending')`,
+          args: [today, serialized, combinedOdds, combinedProb],
+        });
+
+        todayRollover = {
+          roll_date: today,
+          combined_odds: combinedOdds,
+          combined_probability: combinedProb,
+          status: 'pending',
+          selections: selected.map(p => ({
             predictionId: p.id,
             matchId: p.match_id,
             homeTeam: p.home_team,
@@ -95,30 +118,8 @@ export async function GET(req) {
             market: p.market,
             expected: p.prediction,
             confidence: p.confidence,
-          })));
-
-          await db.execute({
-            sql: `INSERT INTO rollovers (roll_date, selections, combined_odds, combined_probability, status)
-                  VALUES (?, ?, ?, ?, 'pending')`,
-            args: [today, serialized, combinedOdds, combinedProb],
-          });
-
-          todayRollover = {
-            roll_date: today,
-            combined_odds: combinedOdds,
-            combined_probability: combinedProb,
-            status: 'pending',
-            selections: selected.map(p => ({
-              predictionId: p.id,
-              matchId: p.match_id,
-              homeTeam: p.home_team,
-              awayTeam: p.away_team,
-              market: p.market,
-              expected: p.prediction,
-              confidence: p.confidence,
-            })),
-          };
-        }
+          })),
+        };
       }
     } else {
       // Parse existing selections
