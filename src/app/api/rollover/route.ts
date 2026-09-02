@@ -43,53 +43,74 @@ export async function GET(req) {
     const db = await initDb();
     const today = new Date().toISOString().split('T')[0];
 
-    // Check if today's rollover already exists
-    let existing = await db.execute({
-      sql: "SELECT * FROM rollovers WHERE roll_date = ?",
+    let todayRollover = null;
+
+    // Compute today's candidate picks (only matches scheduled for the current day)
+    const preds = await db.execute({
+      sql: `SELECT * FROM predictions
+            WHERE status = 'pending' AND match_date = ?
+            ORDER BY confidence DESC
+            LIMIT 40`,
       args: [today],
     });
 
-    let todayRollover = null;
+    // Keep only one (highest-confidence) pick per distinct match
+    const byMatch = new Map();
+    for (const p of preds.rows) {
+      const key = p.match_id;
+      if (!byMatch.has(key)) byMatch.set(key, p);
+    }
+    const candidates = [...byMatch.values()].filter(p => p.confidence >= 0.80);
 
-    if (existing.rows.length === 0) {
-      // Build today's accumulator from pending, still-unsettled predictions
-      const preds = await db.execute(`
-        SELECT * FROM predictions
-        WHERE status = 'pending'
-        ORDER BY confidence DESC
-        LIMIT 40
-      `);
-
-      // Keep only one (highest-confidence) pick per distinct match
-      const byMatch = new Map();
-      for (const p of preds.rows) {
-        const key = p.match_id;
-        if (!byMatch.has(key)) byMatch.set(key, p);
-      }
-      const candidates = [...byMatch.values()].filter(p => p.confidence >= 0.80);
-
-      // Greedily add safest picks until we reach ~2.0 combined odds or hit the cap.
-      // High-confidence picks have low individual odds (1/conf), so we need enough of them.
-      const MAX_PICKS = 8;
-      const selected = [];
-      let combinedOdds = 1;
-      for (const p of candidates) {
-        const odds = probToOdds(p.confidence);
-        // Always take a couple of anchors, then stop slightly above target before it grows too big.
-        if (selected.length === 0) {
-          selected.push(p);
-          combinedOdds *= odds;
-          continue;
-        }
-        if (combinedOdds * odds > TARGET_ODDS * 1.25) break;
-        if (selected.length >= MAX_PICKS) break;
+    // Greedily add safest picks until we reach ~2.0 combined odds or hit the cap.
+    const MAX_PICKS = 8;
+    const selected = [];
+    let combinedOdds = 1;
+    for (const p of candidates) {
+      const odds = probToOdds(p.confidence);
+      if (selected.length === 0) {
         selected.push(p);
         combinedOdds *= odds;
+        continue;
       }
+      if (combinedOdds * odds > TARGET_ODDS * 1.25) break;
+      if (selected.length >= MAX_PICKS) break;
+      selected.push(p);
+      combinedOdds *= odds;
+    }
 
-      if (selected.length >= 2) {
-        const combinedProb = selected.reduce((acc, p) => acc * p.confidence, 1);
-        const serialized = JSON.stringify(selected.map(p => ({
+    // Remove any stale rollover row for today (e.g. built from non-today matches)
+    if (selected.length < 2) {
+      await db.execute({ sql: "DELETE FROM rollovers WHERE roll_date = ?", args: [today] });
+    } else {
+      const combinedProb = selected.reduce((acc, p) => acc * p.confidence, 1);
+      const serialized = JSON.stringify(selected.map(p => ({
+        predictionId: p.id,
+        matchId: p.match_id,
+        homeTeam: p.home_team,
+        awayTeam: p.away_team,
+        market: p.market,
+        expected: p.prediction,
+        confidence: p.confidence,
+      })));
+
+      await db.execute({
+        sql: `INSERT INTO rollovers (roll_date, selections, combined_odds, combined_probability, status)
+              VALUES (?, ?, ?, ?, 'pending')
+              ON CONFLICT(roll_date) DO UPDATE SET
+                selections = excluded.selections,
+                combined_odds = excluded.combined_odds,
+                combined_probability = excluded.combined_probability,
+                status = 'pending'`,
+        args: [today, serialized, combinedOdds, combinedProb],
+      });
+
+      todayRollover = {
+        roll_date: today,
+        combined_odds: combinedOdds,
+        combined_probability: combinedProb,
+        status: 'pending',
+        selections: selected.map(p => ({
           predictionId: p.id,
           matchId: p.match_id,
           homeTeam: p.home_team,
@@ -97,39 +118,7 @@ export async function GET(req) {
           market: p.market,
           expected: p.prediction,
           confidence: p.confidence,
-        })));
-
-        await db.execute({
-          sql: `INSERT INTO rollovers (roll_date, selections, combined_odds, combined_probability, status)
-                VALUES (?, ?, ?, ?, 'pending')`,
-          args: [today, serialized, combinedOdds, combinedProb],
-        });
-
-        todayRollover = {
-          roll_date: today,
-          combined_odds: combinedOdds,
-          combined_probability: combinedProb,
-          status: 'pending',
-          selections: selected.map(p => ({
-            predictionId: p.id,
-            matchId: p.match_id,
-            homeTeam: p.home_team,
-            awayTeam: p.away_team,
-            market: p.market,
-            expected: p.prediction,
-            confidence: p.confidence,
-          })),
-        };
-      }
-    } else {
-      // Parse existing selections
-      const row = existing.rows[0];
-      todayRollover = {
-        roll_date: row.roll_date,
-        combined_odds: row.combined_odds,
-        combined_probability: row.combined_probability,
-        status: row.status,
-        selections: typeof row.selections === 'string' ? JSON.parse(row.selections) : (row.selections || []),
+        })),
       };
     }
 
