@@ -18,14 +18,14 @@ ${learningContext || 'No previous lessons yet - this is the first day.'}
 TODAY'S MATCHES:
 ${matchesJson}
 
-For each match, provide your best market selections. Consider ALL of these markets and cover as many as possible:
-1. Over 1.5 goals - usually safe (75-85% hit rate) -> market "over_1.5"
-2. Under 4.5 goals - very safe bet most of the time -> market "under_4.5"
-3. Under 3.5 goals - when both teams are defensive -> market "under_3.5"
-4. Double Chance - when one team is clearly stronger -> market "double_chance_1x" (home/draw) or "double_chance_x2" (away/draw)
-5. Straight Win - only when one team has huge advantage -> market "straight_win_1" (home win) or "straight_win_2" (away win)
+For each match, provide predictions for as many of these 5 markets as you can evaluate with confidence >= 0.60:
+1. Over 1.5 goals -> market "over_1.5" (almost always viable, usually 75-85%)
+2. Under 4.5 goals -> market "under_4.5" (very safe, usually 80-90%)
+3. Under 3.5 goals -> market "under_3.5" (when likely few goals)
+4. Double Chance -> market "double_chance_1x" (home/draw) or "double_chance_x2" (away/draw)
+5. Straight Win -> market "straight_win_1" (home win) or "straight_win_2" (away win)
 
-Important: spread your predictions across ALL FIVE market types so we have at least a few bets for each market. Prefer safer markets (over_1.5, under_4.5) but ALWAYS include some double_chance and straight_win picks too. Aim the confidence so most are above 0.60.
+IMPORTANT: For EVERY match output at LEAST the "over_1.5" and "under_4.5" predictions. Then add double_chance and straight_win picks for matches with a clear favourite, and under_3.5 when a low-scoring game is expected. Output up to 5 predictions per match so each market has coverage.
 
 Respond with ONLY valid JSON array, one object per match, exactly matching this format:
 [
@@ -47,9 +47,21 @@ Respond with ONLY valid JSON array, one object per match, exactly matching this 
         "reasoning": "short reason"
       },
       {
+        "market": "under_3.5",
+        "expected": "Under 3.5 goals at FT",
+        "confidence": 0.78,
+        "reasoning": "short reason"
+      },
+      {
         "market": "double_chance_1x",
         "expected": "Home or Draw",
         "confidence": 0.78,
+        "reasoning": "short reason"
+      },
+      {
+        "market": "straight_win_1",
+        "expected": "Home to Win",
+        "confidence": 0.70,
         "reasoning": "short reason"
       }
     ]
@@ -57,8 +69,8 @@ Respond with ONLY valid JSON array, one object per match, exactly matching this 
 ]
 
 Rules:
-- Include markets ONLY if you are reasonably confident (confidence >= 0.60)
-- Max 5 predictions per match
+- Only include a market if you are reasonably confident (confidence >= 0.60)
+- Output between 3 and 5 predictions per match, always including over_1.5 and under_4.5
 - Try to cover all 5 market types across the whole set of matches
 - The BEST selection should have the highest confidence
 `;
@@ -78,7 +90,7 @@ Rules:
         { role: 'user', content: prompt },
       ],
       temperature: 0.3,
-      max_tokens: 4000,
+      max_tokens: 6000,
       response_format: { type: 'json_object' },
     }),
   });
