@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { MARKETS } from "../lib/markets";
 
 const CACHE_KEY = 'football_ai_predictions';
 const ROLLOVER_CACHE_KEY = 'football_ai_rollover';
@@ -148,6 +150,26 @@ export default function Home() {
 
       <section className="mb-10">
         <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-semibold text-white">🎰 Bet Markets</h2>
+          <span className="text-xs text-slate-500">Click a market to see its picks (≥ 60% confidence)</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {MARKETS.map(m => (
+            <Link
+              key={m.slug}
+              href={`/market/${m.slug}`}
+              className={`bg-gradient-to-r ${m.gradient} border ${m.border} rounded-xl p-4 text-center hover:opacity-90 hover:scale-[1.02] transition`}
+            >
+              <div className="text-3xl">{m.emoji}</div>
+              <div className="text-sm font-semibold text-white mt-1">{m.short}</div>
+              <div className="text-xs text-slate-400 mt-1">{m.description}</div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-10">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-semibold text-white">Today&apos;s Predictions</h2>
           <a href="/history" className="text-blue-400 hover:text-blue-300 text-sm">
             View History →
@@ -244,11 +266,11 @@ function camTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat('en-US', {
     timeZone: 'Africa/Douala',
-    hour: '2-digit',
+    hour: 'numeric',
     minute: '2-digit',
-    hour12: false,
+    hour12: true,
   }).format(d);
 }
 

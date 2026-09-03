@@ -18,12 +18,14 @@ ${learningContext || 'No previous lessons yet - this is the first day.'}
 TODAY'S MATCHES:
 ${matchesJson}
 
-For each match, provide your best market selections. Consider:
-1. Over 1.5 goals - usually safe (75-85% hit rate)
-2. Under 3.5 goals - when both teams are defensive
-3. Under 4.5 goals - very safe bet most of the time
-4. Double Chance 1X or X2 - when one team is clearly stronger
-5. Straight Win - only when one team has huge advantage
+For each match, provide your best market selections. Consider ALL of these markets and cover as many as possible:
+1. Over 1.5 goals - usually safe (75-85% hit rate) -> market "over_1.5"
+2. Under 4.5 goals - very safe bet most of the time -> market "under_4.5"
+3. Under 3.5 goals - when both teams are defensive -> market "under_3.5"
+4. Double Chance - when one team is clearly stronger -> market "double_chance_1x" (home/draw) or "double_chance_x2" (away/draw)
+5. Straight Win - only when one team has huge advantage -> market "straight_win_1" (home win) or "straight_win_2" (away win)
+
+Important: spread your predictions across ALL FIVE market types so we have at least a few bets for each market. Prefer safer markets (over_1.5, under_4.5) but ALWAYS include some double_chance and straight_win picks too. Aim the confidence so most are above 0.60.
 
 Respond with ONLY valid JSON array, one object per match, exactly matching this format:
 [
@@ -55,9 +57,9 @@ Respond with ONLY valid JSON array, one object per match, exactly matching this 
 ]
 
 Rules:
-- Only include markets you are confident about (confidence >= 0.75)
-- Max 4 predictions per match
-- Be realistic - don't overpredict
+- Include markets ONLY if you are reasonably confident (confidence >= 0.60)
+- Max 5 predictions per match
+- Try to cover all 5 market types across the whole set of matches
 - The BEST selection should have the highest confidence
 `;
 

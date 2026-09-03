@@ -5,10 +5,14 @@ import { analyzeMatches } from "../../../lib/gemini";
 
 export const dynamic = "force-dynamic";
 
+const ALL_LEAGUES = ['PL', 'ELC', 'PD', 'BL1', 'SA', 'FL1', 'DED', 'PPL', 'GSL', 'TSL', 'BSA', 'MLN', 'BEL', 'RPL', 'CL', 'EL'];
+
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const refresh = searchParams.get('refresh') === 'true';
+    const market = searchParams.get('market') || null;
+    const minConfidence = parseFloat(searchParams.get('minConfidence') || '0.60');
     let targetDate = searchParams.get('date') || new Date().toISOString().split('T')[0];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) targetDate = new Date().toISOString().split('T')[0];
     const db = await initDb();
@@ -20,8 +24,8 @@ export async function GET(req) {
     });
 
     if (existing.rows.length === 0 || refresh) {
-      // Fetch matches across multiple leagues, keep those on the target date.
-      const allMatches = await fetchUpcomingMatches(['PL', 'PD', 'BL1', 'SA', 'FL1', 'DED', 'PPL', 'CL', 'ELC'], 1);
+      // Fetch matches across many leagues, keep those on the target date.
+      const allMatches = await fetchUpcomingMatches(ALL_LEAGUES, 1);
       const matches = allMatches.filter(m => m.date === targetDate);
 
       if (matches.length === 0) {
@@ -87,7 +91,28 @@ export async function GET(req) {
       }
     }
 
-    // Fetch predictions for the target date only
+    // Fetch predictions for the target date, optionally filtered by market & confidence
+    // market groups map a slug to one or more stored market values.
+    const MARKET_GROUPS = {
+      'over1.5': ['over_1.5'],
+      'under3.5': ['under_3.5'],
+      'under4.5': ['under_4.5'],
+      'double-chance': ['double_chance_1x', 'double_chance_x2', 'double_chance'],
+      'straight-win': ['straight_win_1', 'straight_win_2', 'straight_win', 'home_win', 'away_win'],
+      'over2.5': ['over_2.5'],
+    };
+    const marketValues = market && MARKET_GROUPS[market] ? MARKET_GROUPS[market] : (market ? [market] : null);
+
+    let marketClause = '';
+    const baseParams = [targetDate, minConfidence];
+    if (marketValues && marketValues.length === 1) {
+      marketClause = ' AND p.market = ?';
+      baseParams.push(marketValues[0]);
+    } else if (marketValues && marketValues.length > 1) {
+      marketClause = ` AND p.market IN (${marketValues.map(() => '?').join(', ')})`;
+      baseParams.push(...marketValues);
+    }
+
     const predictions = await db.execute({
       sql: `SELECT p.*, 
             CASE WHEN m.result IS NOT NULL THEN m.result ELSE NULL END as actual_result,
@@ -95,9 +120,9 @@ export async function GET(req) {
             CASE WHEN m.away_score IS NOT NULL THEN m.away_score ELSE NULL END as actual_away
             FROM predictions p 
             LEFT JOIN match_results m ON p.match_id = m.match_id
-            WHERE p.match_date = ?
+            WHERE p.match_date = ? AND p.confidence >= ? ${marketClause}
             ORDER BY p.confidence DESC, p.created_at DESC`,
-      args: [targetDate],
+      args: baseParams,
     });
 
     return NextResponse.json({ predictions: predictions.rows, fromAI: true });

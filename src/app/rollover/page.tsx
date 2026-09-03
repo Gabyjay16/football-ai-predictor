@@ -142,10 +142,10 @@ function camTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat('en-US', {
     timeZone: 'Africa/Douala',
-    hour: '2-digit',
+    hour: 'numeric',
     minute: '2-digit',
-    hour12: false,
+    hour12: true,
   }).format(d);
 }

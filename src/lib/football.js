@@ -5,26 +5,40 @@ const FD_BASE = 'https://api.football-data.org/v4';
 // football-data.org competition codes
 const LEAGUE_CODES = {
   PL: 'PL', // English Premier League
+  ELC: 'ELC', // Championship (England)
   PD: 'PD', // La Liga (Spain)
   BL1: 'BL1', // Bundesliga (Germany)
   SA: 'SA', // Serie A (Italy)
   FL1: 'FL1', // Ligue 1 (France)
   DED: 'DED', // Eredivisie (Netherlands)
   PPL: 'PPL', // Primeira Liga (Portugal)
+  GSL: 'GSL', // Scottish Premiership
+  TSL: 'TSL', // Turkish Süper Lig
+  BSA: 'BSA', // Brazilian Serie A
+  MLN: 'MLN', // Major League Soccer
+  BEL: 'BEL', // Belgian Pro League
+  RPL: 'RPL', // Russian Premier Liga
   CL: 'CL', // Champions League
-  ELC: 'ELC', // Championship (England)
+  EL: 'EL', // Europa League
 };
 
 const LEAGUE_NAMES = {
   PL: 'Premier League',
+  ELC: 'Championship',
   PD: 'La Liga',
   BL1: 'Bundesliga',
   SA: 'Serie A',
   FL1: 'Ligue 1',
   DED: 'Eredivisie',
   PPL: 'Primeira Liga',
+  GSL: 'Scottish Premiership',
+  TSL: 'Turkish Süper Lig',
+  BSA: 'Brazilian Serie A',
+  MLN: 'MLS',
+  BEL: 'Belgian Pro League',
+  RPL: 'Russian Premier Liga',
   CL: 'Champions League',
-  ELC: 'Championship',
+  EL: 'Europa League',
 };
 
 /**
@@ -48,10 +62,10 @@ export async function fetchUpcomingMatches(league = 'PL', days = 1) {
       // league may be a single code or an array of codes
       const codes = Array.isArray(league) ? league : [league];
 
-      // Fetch matches across leagues, but respect free-tier limits (10 req/min).
-      // Only make one request per league, capped at a small number of leagues.
+      // Fetch matches across many leagues to cover every bet market.
+      // Keep to ~8 leagues per call to respect the free-tier limit (10 req/min).
       const allMatches = [];
-      const limitedCodes = codes.slice(0, 4);
+      const limitedCodes = codes.slice(0, 8);
 
       for (const code of limitedCodes) {
         const url = `${FD_BASE}/competitions/${code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
